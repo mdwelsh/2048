@@ -5,15 +5,15 @@
 import { program } from 'commander';
 import terminal from 'terminal-kit';
 const { terminal: term } = terminal;
+import { Game } from './game.js';
 
 program.name('llm2048').version('0.0.1').description('LLM2048.');
 
 program
-  .command('hello')
-  .description('Hello, world.')
+  .command('run')
+  .description('Run the game.')
   .action(async () => {
-    term.blue('Hello, world!\n');
+    Game();
   });
-
 
 program.parse(process.argv);
