@@ -19,6 +19,7 @@
     "commander": "^11.0.0",
     "dotenv": "^16.3.1",
     "eslint": "^8.44.0",
+    "openai": "^4.52.2",
     "terminal-kit": "^3.0.0"
   },
   "devDependencies": {

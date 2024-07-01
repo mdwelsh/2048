@@ -10,10 +10,10 @@ import { Game } from './game.js';
 program.name('llm2048').version('0.0.1').description('LLM2048.');
 
 program
-  .command('run')
+  .command('run [mode]')
   .description('Run the game.')
-  .action(async () => {
-    Game();
+  .action(async (mode: 'interactive' | 'llm') => {
+    Game(mode);
   });
 
 program.parse(process.argv);

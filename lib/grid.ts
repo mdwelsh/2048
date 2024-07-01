@@ -1,22 +1,34 @@
-export function Grid(size, previousState) {
-  this.size = size;
-  this.cells = previousState ? this.fromState(previousState) : this.empty();
+import { Tile } from './tile';
+
+export class GridState {
+  size: number;
+  cellState: any;
+}
+
+export class Grid {
+  cells: Tile[][];
+  constructor(public size: number, previousState: GridState) {
+    this.size = size;
+    this.cells = previousState ? this.fromState(previousState) : this.empty();
+  }
+
+  empty() {
+    var cells = [];
+
+    for (var x = 0; x < this.size; x++) {
+      var row = (cells[x] = []);
+
+      for (var y = 0; y < this.size; y++) {
+        row.push(null);
+      }
+    }
+
+    return cells;
+  }
 }
 
 // Build a grid of the specified size
-Grid.prototype.empty = function () {
-  var cells = [];
-
-  for (var x = 0; x < this.size; x++) {
-    var row = (cells[x] = []);
-
-    for (var y = 0; y < this.size; y++) {
-      row.push(null);
-    }
-  }
-
-  return cells;
-};
+Grid.prototype.empty = function () {};
 
 Grid.prototype.fromState = function (state) {
   var cells = [];
