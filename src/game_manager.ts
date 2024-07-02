@@ -2,75 +2,43 @@ import { Grid } from './grid.js';
 import { Tile } from './tile.js';
 import { EventEmitter } from 'node:events';
 
-export class GameManager extends EventEmitter {
-  inputManager: any;
-  storageManager: any;
-  actuator: any;
-  startTiles: number;
+export type Direction = 0 | 1 | 2 | 3;
+
+export type GameState = {
   grid: Grid;
   score: number;
   over: boolean;
   won: boolean;
-  keepPlayingFlag: boolean;
+  terminated: boolean;
+};
 
-  constructor(public size: number, InputManager: any, Actuator: any, StorageManager: any) {
+export abstract class InputManager extends EventEmitter {}
+
+export abstract class Actuator extends EventEmitter {
+  abstract actuate(gameState: GameState, move?: Direction): void;
+}
+
+export class GameManager extends EventEmitter {
+  startTiles: number;
+  grid: Grid;
+  score: number = 0;
+  over: boolean = false;
+  won: boolean = false;
+
+  constructor(public size: number, public inputManager: InputManager, public actuator: Actuator) {
     super();
-    this.inputManager = new InputManager();
-    this.storageManager = new StorageManager();
-    this.actuator = new Actuator();
-
     this.startTiles = 2;
-
+    this.grid = new Grid(size);
+    this.score = 0;
+    this.over = false;
+    this.won = false;
+    this.addStartTiles();
     this.inputManager.on('move', this.move.bind(this));
-    this.inputManager.on('restart', this.restart.bind(this));
-    this.inputManager.on('keepPlaying', this.keepPlaying.bind(this));
-    this.setup();
-  }
-
-  // Restart the game
-  restart() {
-    this.storageManager.clearGameState();
-    this.actuator.continueGame(); // Clear the game won/lost message
-    this.setup();
-    this.actuate();
-  }
-
-  // Keep playing after winning (allows going over 2048)
-  keepPlaying() {
-    this.keepPlayingFlag = true;
-    this.actuator.continueGame(); // Clear the game won/lost message
   }
 
   // Return true if the game is lost, or has won and the user hasn't kept playing
-  isGameTerminated() {
-    return this.over || (this.won && !this.keepPlaying);
-  }
-
-  // Set up the game
-  setup() {
-    var previousState = this.storageManager.getGameState();
-
-    // Reload the game from a previous game if present
-    if (previousState) {
-      this.grid = new Grid(previousState.grid.size, previousState.grid.cells); // Reload grid
-      this.score = previousState.score;
-      this.over = previousState.over;
-      this.won = previousState.won;
-      this.keepPlayingFlag = previousState.keepPlaying;
-    } else {
-      this.grid = new Grid(this.size);
-      this.score = 0;
-      this.over = false;
-      this.won = false;
-      this.keepPlayingFlag = false;
-
-      // Add the initial tiles
-      this.addStartTiles();
-    }
-
-    // Update the actuator
-    // MDW: Don't do this automatically.
-    //this.actuate();
+  isGameTerminated(): boolean {
+    return this.over || this.won;
   }
 
   // Set up the initial tiles to start the game with
@@ -84,43 +52,23 @@ export class GameManager extends EventEmitter {
   addRandomTile() {
     if (this.grid.cellsAvailable()) {
       var value = Math.random() < 0.9 ? 2 : 4;
-      var tile = new Tile(this.grid.randomAvailableCell(), value);
-
+      var tile = new Tile(this.grid.randomAvailableCell()!, value);
       this.grid.insertTile(tile);
     }
   }
 
-  // Sends the updated grid to the actuator
-  actuate() {
-    if (this.storageManager.getBestScore() < this.score) {
-      this.storageManager.setBestScore(this.score);
-    }
-
-    // Clear the state when the game is over (game over only, not win)
-    if (this.over) {
-      this.storageManager.clearGameState();
-    } else {
-      this.storageManager.setGameState(this.serialize());
-    }
-
-    this.actuator.actuate(this.grid, {
-      score: this.score,
-      over: this.over,
-      won: this.won,
-      bestScore: this.storageManager.getBestScore(),
-      terminated: this.isGameTerminated(),
-    });
-  }
-
-  // Represent the current game as an object
-  serialize() {
-    return {
-      grid: this.grid.serialize(),
-      score: this.score,
-      over: this.over,
-      won: this.won,
-      keepPlaying: this.keepPlayingFlag,
-    };
+  // Sends the updated grid to the actuator.
+  actuate(direction?: Direction) {
+    this.actuator.actuate(
+      {
+        grid: this.grid,
+        score: this.score,
+        over: this.over,
+        won: this.won,
+        terminated: this.isGameTerminated(),
+      },
+      direction
+    );
   }
 
   // Save all tile positions and remove merger info
@@ -134,14 +82,14 @@ export class GameManager extends EventEmitter {
   }
 
   // Move a tile and its representation
-  moveTile(tile, cell) {
+  moveTile(tile: Tile, cell: { x: number; y: number }) {
     this.grid.cells[tile.x][tile.y] = null;
     this.grid.cells[cell.x][cell.y] = tile;
     tile.updatePosition(cell);
   }
 
   // Move tiles on the grid in the specified direction
-  move(direction) {
+  move(direction: Direction) {
     // 0: up, 1: right, 2: down, 3: left
     var self = this;
 
@@ -195,20 +143,15 @@ export class GameManager extends EventEmitter {
 
     if (moved) {
       this.addRandomTile();
-
       if (!this.movesAvailable()) {
         this.over = true; // Game over!
       }
-
-      this.actuate();
-    } else {
-      // MDW - Added this so that moves that don't result in any tiles moving still actuate.
-      this.actuate();
     }
+    this.actuate(direction);
   }
 
   // Get the vector representing the chosen direction
-  getVector(direction) {
+  getVector(direction: Direction): { x: number; y: number } {
     // Vectors representing tile movement
     var map = {
       0: { x: 0, y: -1 }, // Up
@@ -221,10 +164,10 @@ export class GameManager extends EventEmitter {
   }
 
   // Build a list of positions to traverse in the right order
-  buildTraversals(vector) {
-    var traversals = { x: [], y: [] };
+  buildTraversals(vector: { x: number; y: number }) {
+    var traversals: { x: number[]; y: number[] } = { x: [], y: [] };
 
-    for (var pos = 0; pos < this.size; pos++) {
+    for (let pos = 0; pos < this.size; pos++) {
       traversals.x.push(pos);
       traversals.y.push(pos);
     }
@@ -236,7 +179,7 @@ export class GameManager extends EventEmitter {
     return traversals;
   }
 
-  findFarthestPosition(cell, vector) {
+  findFarthestPosition(cell: { x: number; y: number }, vector: { x: number; y: number }) {
     var previous;
 
     // Progress towards the vector direction until an obstacle is found
@@ -251,12 +194,12 @@ export class GameManager extends EventEmitter {
     };
   }
 
-  movesAvailable() {
+  movesAvailable(): boolean {
     return this.grid.cellsAvailable() || this.tileMatchesAvailable();
   }
 
   // Check for available matches between tiles (more expensive check)
-  tileMatchesAvailable() {
+  tileMatchesAvailable(): boolean {
     var self = this;
 
     var tile;
@@ -266,8 +209,8 @@ export class GameManager extends EventEmitter {
         tile = this.grid.cellContent({ x: x, y: y });
 
         if (tile) {
-          for (var direction = 0; direction < 4; direction++) {
-            var vector = self.getVector(direction);
+          for (let direction = 0; direction < 4; direction++) {
+            var vector = self.getVector(direction as Direction);
             var cell = { x: x + vector.x, y: y + vector.y };
 
             var other = self.grid.cellContent(cell);
@@ -283,7 +226,7 @@ export class GameManager extends EventEmitter {
     return false;
   }
 
-  positionsEqual(first, second) {
+  positionsEqual(first: { x: number; y: number }, second: { x: number; y: number }) {
     return first.x === second.x && first.y === second.y;
   }
 }

@@ -1,3 +1,8 @@
+export type TileState = {
+  position: { x: number; y: number };
+  value: number;
+};
+
 export class Tile {
   x: number;
   y: number;
@@ -17,12 +22,12 @@ export class Tile {
     this.previousPosition = { x: this.x, y: this.y };
   }
 
-  updatePosition = function (position: { x: number; y: number }) {
+  updatePosition(position: { x: number; y: number }) {
     this.x = position.x;
     this.y = position.y;
-  };
+  }
 
-  serialize(): { position: { x: number; y: number }; value: number } {
+  serialize(): TileState {
     return {
       position: {
         x: this.x,

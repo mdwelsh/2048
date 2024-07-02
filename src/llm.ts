@@ -7,10 +7,20 @@
 //
 // Whenever GameManager.move() is called, it will call actuator.actuate() to update the UI.
 
+// Some strategies to try:
+//   * Give a more explicit description of the game and goals.
+//   * Render the state of the game as, e.g., a JSON object instead of a table.
+//   * Show the result of the four possible moves (pointing out that a new tile will be randomly added).
+//   * Give some examples of moves to make in various situations.
+//   * Have the LLM respond with both the move and a justification for it, on the premise that forcing
+//     the model to "show its work" will yield a better result.
+//   * Provide the state of the game and the resulting move for the last, say, 3 moves.
+//   * Fine-tune a model on manually played games.
+
+import { Direction, GameState, InputManager, Actuator } from './game_manager.js';
 import terminal from 'terminal-kit';
 const { terminal: term } = terminal;
 import { EventEmitter } from 'node:events';
-import { showGrid } from './terminal.js';
 import OpenAI from 'openai';
 
 // These values are in USD for GPT-4o.
@@ -52,20 +62,17 @@ export function textGrid(grid: any): string {
   return '\n' + rowSeparator + '\n' + rows.join('\n' + rowSeparator + '\n') + '\n' + rowSeparator;
 }
 
-export class LLMInputManager extends EventEmitter {
+/** All the LLMInputManager does is forward the move event to the GameManager. */
+export class LLMInputManager extends InputManager {
   constructor() {
     super();
-    this.listen();
-  }
-  listen() {
     nextMove.on('move', (move) => {
-      term('Move: ').yellow(move === 0 ? 'up' : move === 1 ? 'right' : move === 2 ? 'down' : 'left')('\n');
       this.emit('move', move);
     });
   }
 }
 
-export class LLMActuator {
+export class LLMActuator extends Actuator {
   inputTokens: number = 0;
   outputTokens: number = 0;
 
@@ -73,54 +80,31 @@ export class LLMActuator {
     return this.inputTokens * INPUT_TOKEN_COST + this.outputTokens * OUTPUT_TOKEN_COST;
   }
 
-  continueGame() {
-    // Do nothing.
-  }
-  actuate(
-    grid: any,
-    {
-      score,
-      over,
-      won,
-      bestScore,
-      terminated,
-    }: { score: number; over: boolean; won: boolean; bestScore: number; terminated: boolean }
-  ) {
-    const maxTile = grid.cells.reduce((max: number, row: any) => {
-      return Math.max(
-        max,
-        row.reduce((max: number, cell: any) => (cell ? Math.max(max, cell.value) : max), 0)
-      );
-    }, 0);
+  actuate(gameState: GameState, move?: Direction) {
+    // First emit the current move.
+    this.emit('move', {
+      move,
+      ...gameState,
+      inputTokens: this.inputTokens,
+      outputTokens: this.outputTokens,
+      cost: this.cost(),
+    });
 
-    term('Current score: ').green(score || '0');
-    term(' Max tile: ').green(maxTile || '0');
-    term(' Tokens: ').yellow(this.inputTokens + this.outputTokens);
-    term(' Cost: $').yellow(this.cost().toFixed(4));
-    if (over) {
-      term.yellow(' over is true!');
-    }
-    if (won) {
-      term.green(' won is true!');
-    }
-    console.log(textGrid(grid));
-
-    if (terminated) {
-      term.red('Game over! Final score: ' + score + '\n');
-      term.grabInput(false);
-      setTimeout(function () {
-        process.exit();
-      }, 100);
+    // Quit if we're done.
+    if (gameState.terminated) {
+      this.emit('terminate');
     }
 
-    const move = this.getNextMove(grid).then((move) => {
+    // Get the next move and emit it through nextMove.
+    this.getNextMove(gameState.grid).then((proposedMove) => {
       setTimeout(() => {
-        nextMove.emit('move', move);
+        nextMove.emit('move', proposedMove);
       }, 100);
     });
   }
 
-  private async getNextMove(grid: any) {
+  /** Ask the LLM for the next move. */
+  private async getNextMove(grid: any): Promise<Direction> {
     const systemPrompt = SYSTEM_PROMPT + '\n\n' + 'The current state of the game board is:\n' + textGrid(grid) + '\n';
 
     const messages = [
@@ -142,6 +126,6 @@ export class LLMActuator {
     this.outputTokens += response.usage?.completion_tokens ?? 0;
 
     const proposedMove = parseInt(response.choices[0].message.content ?? '0');
-    return proposedMove;
+    return proposedMove as Direction;
   }
 }

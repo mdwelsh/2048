@@ -1,3 +1,4 @@
+import { Direction, GameState, InputManager, Actuator } from './game_manager.js';
 import terminal from 'terminal-kit';
 const { terminal: term } = terminal;
 
@@ -38,31 +39,10 @@ export function showGrid(grid: any) {
   });
 }
 
-export class TerminalInputManager {
-  events: any;
-
+export class TerminalInputManager extends InputManager {
   constructor() {
-    this.events = {};
-    this.listen();
-  }
+    super();
 
-  on(event: any, callback: any) {
-    if (!this.events[event]) {
-      this.events[event] = [];
-    }
-    this.events[event].push(callback);
-  }
-
-  emit(event: any, data: any) {
-    const callbacks = this.events[event];
-    if (callbacks) {
-      callbacks.forEach((callback: any) => {
-        callback(data);
-      });
-    }
-  }
-
-  listen() {
     term.grabInput(true);
     term.on('key', (name: any, matches: any, data: any) => {
       if (name === 'CTRL_C' || name === 'q') {
@@ -83,33 +63,20 @@ export class TerminalInputManager {
   }
 }
 
-export class TerminalActuator {
-  continueGame() {
-    // Do nothing.
-  }
-
-  actuate(
-    grid: any,
-    {
-      score,
-      over,
-      won,
-      bestScore,
-      terminated,
-    }: { score: number; over: boolean; won: boolean; bestScore: number; terminated: boolean }
-  ) {
+export class TerminalActuator extends Actuator {
+  actuate(gameState: GameState, move?: Direction) {
     term.clear();
-    term('Current score: ').green(score || '0')('\n');
-    showGrid(grid);
-    if (over) {
+    term('Current score: ').green(gameState.score || '0')('\n');
+    if (move !== undefined) {
+      term('Move: ').yellow(move === 0 ? 'UP' : move === 1 ? 'RIGHT' : move === 2 ? 'DOWN' : 'LEFT')('\n');
+    }
+    showGrid(gameState.grid);
+    if (gameState.over) {
       term.red('Game over!\n');
       term.grabInput(false);
       setTimeout(function () {
         process.exit();
       }, 100);
     }
-    //grid.eachCell((x: any, y: any, tile: any) => {
-    //  term(`x: ${x}, y: ${y}, tile: ${tile?.value}\n`);
-    //});
   }
 }
